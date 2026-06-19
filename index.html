@@ -50,7 +50,7 @@
   const db = firebase.database();
 
   let localStream = null;
-  const peers = {}; // Все PeerConnection по sessionId
+  const peers = {}; // все RTCPeerConnections по sessionId
   const remoteVideosContainer = document.getElementById('remoteVideos');
 
   const configuration = {
@@ -69,14 +69,15 @@
 
   let role = ''; // 'host' или 'participant'
   let sessionId = '';
+  let participantId = '';
 
-  // Генерируем уникальный ID сессии
+  // Генератор случайного ID
   function generateSessionId() {
     return Math.floor(Math.random() * 10000).toString().padStart(4, '0');
   }
 
   document.getElementById('createBtn').onclick = async () => {
-    sessionId = generateSessionId(); // Создаем уникальный ID
+    sessionId = generateSessionId();
     document.getElementById('status').innerText = 'Создана сессия: ' + sessionId;
     role = 'host';
     await startLocalStream();
@@ -90,11 +91,12 @@
       return;
     }
     role = 'participant';
-    await startLocalStream(); // Включаем камеру и показываем локальное видео
+    participantId = 'participant_' + generateSessionId();
+    await startLocalStream();
     await joinSession();
   };
 
-  // Запрашиваем доступ к камере
+  // Запрос доступа к камере и отображение
   async function startLocalStream() {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -104,26 +106,23 @@
     }
   }
 
-  // =======================
-  // Создаем новую сессию (для хоста)
+  // Создание сессии (для хоста)
   async function createSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
-    await sessionRef.set({}); // создаем пустую сессию
+    await sessionRef.set({});
 
     // Обработка новых участников
-    db.ref('sessions/' + sessionId + '/participants').on('child_added', snapshot => {
+    db.ref('sessions/' + sessionId + '/participants').on('child_added', async snapshot => {
       const participantId = snapshot.key;
       if (participantId !== 'admin') {
-        connectToParticipant(participantId);
+        await connectToParticipant(participantId);
       }
     });
   }
 
-  // =======================
-  // Присоединяемся к сессии (для участников)
+  // Присоединение к сессии (для участников)
   async function joinSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
-    const participantId = 'participant_' + generateSessionId(); // уникальный ID участника
     await sessionRef.child('participants').child(participantId).set({});
 
     // Обработка входящих предложений
@@ -144,7 +143,7 @@
       }
     });
 
-    // Обработка ICE кандидатов
+    // Обработка ICE
     db.ref(`sessions/${sessionId}/candidates`).on('child_added', snapshot => {
       const fromId = snapshot.key;
       const candidate = snapshot.val();
@@ -152,13 +151,9 @@
         peers[fromId].addIceCandidate(new RTCIceCandidate(candidate));
       }
     });
-
-    // Для участников, сразу показываем свою камеру после подключения
-    // (уже вызвано в startLocalStream при нажатии)
   }
 
-  // =======================
-  // Создаем соединение с участником (для хоста)
+  // Создаем соединение для участника (для хоста)
   async function connectToParticipant(participantId) {
     const pc = new RTCPeerConnection(configuration);
     peers[participantId] = pc;
@@ -166,7 +161,7 @@
     // Добавляем локальные дорожки
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    // Обработка ICE
+    // ICE кандидат
     pc.onicecandidate = e => {
       if (e.candidate) {
         firebase.database().ref(`sessions/${sessionId}/candidates/${participantId}`).push(e.candidate.toJSON());
@@ -178,14 +173,13 @@
       addRemoteStream(e.streams[0], participantId);
     };
 
-    // Создаем offer
+    // Создаем предложение
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await firebase.database().ref(`sessions/${sessionId}/offers/${participantId}`).set(pc.localDescription.toJSON());
 
     // Ждем ответ
-    const answerRef = firebase.database().ref(`sessions/${sessionId}/answers/${participantId}`);
-    answerRef.on('value', async snapshot => {
+    firebase.database().ref(`sessions/${sessionId}/answers/${participantId}`).on('value', async snapshot => {
       const answer = snapshot.val();
       if (answer && !pc.currentRemoteDescription) {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
@@ -193,8 +187,7 @@
     });
   }
 
-  // =======================
-  // Обрабатываем входящее предложение (для участников)
+  // Обработка входящего предложения (для участников)
   async function handleOffer(fromId, offer) {
     const pc = new RTCPeerConnection(configuration);
     peers[fromId] = pc;
@@ -202,14 +195,12 @@
     // Добавляем локальные дорожки
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    // ICE
     pc.onicecandidate = e => {
       if (e.candidate) {
         firebase.database().ref(`sessions/${sessionId}/candidates/${fromId}`).push(e.candidate.toJSON());
       }
     };
 
-    // Обработка входящего потока
     pc.ontrack = e => {
       addRemoteStream(e.streams[0], fromId);
     };
@@ -220,8 +211,7 @@
     await firebase.database().ref(`sessions/${sessionId}/answers/${fromId}`).set(pc.localDescription.toJSON());
   }
 
-  // =======================
-  // Добавляем видео поток другого участника
+  // Добавляем видео другого участника
   function addRemoteStream(stream, id) {
     let video = document.getElementById('remote_' + id);
     if (!video) {

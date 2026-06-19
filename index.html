@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>WebRTC Видео Связь</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  #videos { display: flex; gap: 20px; }
+  video { width: 45%; background: #000; }
+  #progress-container { width: 100%; background: #eee; height: 20px; margin-top: 20px; }
+  #progress-bar { height: 100%; width: 0%; background: #4caf50; }
+  button { margin-top: 20px; padding: 10px 20px; font-size: 16px; }
+</style>
+</head>
+<body>
+
+<h1>WebRTC Видео Связь</h1>
+
+<div id="videos">
+  <video id="localVideo" autoplay playsinline muted></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+</div>
+
+<div id="progress-container">
+  <div id="progress-bar"></div>
+</div>
+
+<button id="requestAccess">Начать Видео Связь</button>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-database-compat.js"></script>
+
+<script>
+  // Конфигурация Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyAgpTriHrYvqSULJAwu4JfNijfi-n6L8iw",
+    authDomain: "videocontet.firebaseapp.com",
+    databaseURL: "https://videocontet-default-rtdb.firebaseio.com",
+    projectId: "videocontet",
+    storageBucket: "videocontet.firebasestorage.app",
+    messagingSenderId: "944595625561",
+    appId: "1:944595625561:web:e03787fee211fd15213348",
+    measurementId: "G-QZJL8LR2DL"
+  };
+
+  // Инициализация Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const progressBar = document.getElementById('progress-bar');
+  const requestButton = document.getElementById('requestAccess');
+  const localVideo = document.getElementById('localVideo');
+  const remoteVideo = document.getElementById('remoteVideo');
+
+  let localStream;
+  let peerConnection;
+
+  // Конфигурация ICE с STUN и TURN
+  const configuration = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      {
+        urls: 'turn:wawqdfr1:3478',
+        username: 'wawqdfr1',
+        credential: 'lol123lol'
+      }
+    ]
+  };
+
+  requestButton.onclick = async () => {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      localVideo.srcObject = localStream;
+      updateProgress(50);
+      await firebase.database().ref('access').set({ granted: true });
+      startPeerConnection();
+      updateProgress(100);
+    } catch (e) {
+      alert('Ошибка доступа к камере: ' + e);
+    }
+  };
+
+  function updateProgress(percent) {
+    progressBar.style.width = percent + '%';
+  }
+
+  async function startPeerConnection() {
+    peerConnection = new RTCPeerConnection(configuration);
+
+    // Добавляем локальные треки
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    // Обработка ICE кандидатур
+    peerConnection.onicecandidate = event => {
+      if (event.candidate) {
+        firebase.database().ref('candidates').push(event.candidate.toJSON());
+      }
+    };
+
+    // Получение удаленного потока
+    peerConnection.ontrack = event => {
+      remoteVideo.srcObject = event.streams[0];
+    };
+
+    // Создаем и отправляем предложение
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    await firebase.database().ref('offer').set(peerConnection.localDescription.toJSON());
+
+    // Обработка ответа
+    firebase.database().ref('answer').on('value', async snapshot => {
+      const answer = snapshot.val();
+      if (answer && !peerConnection.currentRemoteDescription) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    });
+
+    // Обработка входящих ICE кандидатур
+    firebase.database().ref('candidates').on('child_added', async snapshot => {
+      const candidate = new RTCIceCandidate(snapshot.val());
+      await peerConnection.addIceCandidate(candidate);
+    });
+  }
+</script>
+
+</body>
+</html>

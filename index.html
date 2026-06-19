@@ -50,7 +50,7 @@
   const db = firebase.database();
 
   let localStream = null;
-  const peers = {}; // Все PeerConnection
+  const peers = {}; // Все PeerConnection по sessionId
   const remoteVideosContainer = document.getElementById('remoteVideos');
 
   const configuration = {
@@ -70,7 +70,7 @@
   let role = ''; // 'host' или 'participant'
   let sessionId = '';
 
-  // Создаем уникальный ID сессии (4 цифры)
+  // Генератор уникальных ID сеансов
   let sessionCounter = 1;
   function getNextSessionId() {
     const idStr = sessionCounter.toString().padStart(4, '0');
@@ -97,6 +97,7 @@
     await joinSession();
   };
 
+  // Запрашиваем доступ к камере
   async function startLocalStream() {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -107,10 +108,10 @@
   }
 
   // =======================
-  // Создание новой сессии (для хоста)
+  // Создаем новую сессию (для хоста)
   async function createSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
-    await sessionRef.set({});
+    await sessionRef.set({}); // создаем пустую сессию
 
     // Обработка новых участников
     db.ref('sessions/' + sessionId + '/participants').on('child_added', snapshot => {
@@ -122,13 +123,13 @@
   }
 
   // =======================
-  // Присоединение к существующей сессии (для участников)
+  // Присоединяемся к сессии (для участников)
   async function joinSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
     const participantId = 'participant_' + getNextSessionId();
     await sessionRef.child('participants').child(participantId).set({});
 
-    // Обработка предложений
+    // Обработка входящих предложений
     db.ref(`sessions/${sessionId}/offers`).on('child_added', async snapshot => {
       const fromId = snapshot.key;
       const offer = snapshot.val();
@@ -149,19 +150,18 @@
     // Обработка ICE кандидатов
     db.ref(`sessions/${sessionId}/candidates`).on('child_added', snapshot => {
       const fromId = snapshot.key;
-      const candidate = new RTCIceCandidate(snapshot.val());
+      const candidate = snapshot.val();
       if (peers[fromId]) {
-        peers[fromId].addIceCandidate(candidate);
+        peers[fromId].addIceCandidate(new RTCIceCandidate(candidate));
       }
     });
 
-    // Создаем соединения с уже существующими участниками
-    // или ждем новых
-    // Тут можно добавить логику поиска уже подключенных участников
+    // Создаем соединение со всеми участниками, которых уже есть
+    // Но в основном мы ждем новых участников через on('child_added')
   }
 
   // =======================
-  // Подключение к участнику (для хоста)
+  // Создаем соединение с новым участником (для хоста)
   async function connectToParticipant(participantId) {
     const pc = new RTCPeerConnection(configuration);
     peers[participantId] = pc;
@@ -169,7 +169,7 @@
     // Добавляем локальные дорожки
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    // ICE кандидаты
+    // Обработка ICE
     pc.onicecandidate = e => {
       if (e.candidate) {
         firebase.database().ref(`sessions/${sessionId}/candidates/${participantId}`).push(e.candidate.toJSON());
@@ -181,12 +181,12 @@
       addRemoteStream(e.streams[0], participantId);
     };
 
-    // Создаём offer
+    // Создаем offer
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await firebase.database().ref(`sessions/${sessionId}/offers/${participantId}`).set(pc.localDescription.toJSON());
 
-    // Ждем answer
+    // Ждем ответ
     const answerRef = firebase.database().ref(`sessions/${sessionId}/answers/${participantId}`);
     answerRef.on('value', async snapshot => {
       const answer = snapshot.val();
@@ -197,7 +197,7 @@
   }
 
   // =======================
-  // Обработка входящего предложения
+  // Обрабатываем входящее предложение (для участников)
   async function handleOffer(fromId, offer) {
     const pc = new RTCPeerConnection(configuration);
     peers[fromId] = pc;
@@ -212,7 +212,7 @@
       }
     };
 
-    // Обработка входящих потоков
+    // Обработка входящего потока
     pc.ontrack = e => {
       addRemoteStream(e.streams[0], fromId);
     };
@@ -224,7 +224,7 @@
   }
 
   // =======================
-  // Добавление видео потока
+  // Добавляем видео поток другого участника
   function addRemoteStream(stream, id) {
     let video = document.getElementById('remote_' + id);
     if (!video) {

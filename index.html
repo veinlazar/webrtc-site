@@ -2,53 +2,40 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8" />
-<title>WebRTC Видео Связь с Админом</title>
+<title>WebRTC Конференция</title>
 <style>
   body { font-family: Arial, sans-serif; margin: 20px; }
   #controls { margin-bottom: 20px; }
   input { margin-right: 10px; }
   button { margin-right: 10px; padding: 8px 16px; }
-  #videos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-  video { width: 45%; background: #000; }
-  #admin-section { margin-top: 40px; border-top: 2px solid #ccc; padding-top: 20px; }
+  #videos { display: flex; flex-wrap: wrap; gap: 10px; }
+  video { width: 30%; background: #000; }
 </style>
 </head>
 <body>
 
-<h1>WebRTC Видео Связь с Админом</h1>
+<h1>WebRTC Видеоконференция</h1>
 
 <div id="controls">
-  <input type="text" id="sessionId" placeholder="ID сессии (например 0001)" />
   <button id="createBtn">Создать сессию</button>
+  <input type="text" id="sessionIdInput" placeholder="Введите ID сессии" />
   <button id="joinBtn">Присоединиться</button>
-  
-  <br><br>
-  
-  <div id="admin-section">
-    <h3>Вход для Администратора</h3>
-    <input type="password" id="adminPassword" placeholder="Пароль" />
-    <button id="adminLoginBtn">Войти как Админ</button>
-  </div>
 </div>
 
 <div id="status"></div>
 
-<div id="videos">
-  <div>
-    <h3>Моя камера</h3>
-    <video id="localVideo" autoplay playsinline muted></video>
-  </div>
-  <div>
-    <h3>Все камеры</h3>
-    <div id="remoteVideos"></div>
-  </div>
-</div>
+<h2>Мои видео</h2>
+<video id="localVideo" autoplay playsinline muted></video>
 
+<h2>Видео участников</h2>
+<div id="remoteVideos"></div>
+
+<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-database-compat.js"></script>
 
 <script>
-  // Конфигурация Firebase
+  // --- Конфигурация Firebase ---
   const firebaseConfig = {
     apiKey: "AIzaSyAgpTriHrYvqSULJAwu4JfNijfi-n6L8iw",
     authDomain: "videocontet.firebaseapp.com",
@@ -59,13 +46,11 @@
     appId: "1:944595625561:web:e03787fee211fd15213348",
     measurementId: "G-QZJL8LR2DL"
   };
-
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
   let localStream = null;
-  const peerConnections = {}; // для участников
-  const remoteVideoElements = {}; // для отображения потоков
+  const peers = {}; // Все PeerConnection
   const remoteVideosContainer = document.getElementById('remoteVideos');
 
   const configuration = {
@@ -82,55 +67,34 @@
   const localVideo = document.getElementById('localVideo');
   const statusDiv = document.getElementById('status');
 
-  let role = ''; // 'host', 'participant', 'admin'
+  let role = ''; // 'host' или 'participant'
   let sessionId = '';
 
-  // Для счетчика ID
+  // Создаем уникальный ID сессии (4 цифры)
   let sessionCounter = 1;
-
-  // Обновлять счетчик для следующей сессии
   function getNextSessionId() {
     const idStr = sessionCounter.toString().padStart(4, '0');
     sessionCounter++;
     return idStr;
   }
 
-  document.getElementById('createBtn').onclick = () => {
+  document.getElementById('createBtn').onclick = async () => {
     sessionId = getNextSessionId();
     document.getElementById('status').innerText = 'Создана сессия: ' + sessionId;
     role = 'host';
-    startLocalStream().then(() => {
-      createSession();
-    });
+    await startLocalStream();
+    await createSession();
   };
 
-  document.getElementById('joinBtn').onclick = () => {
-    sessionId = document.getElementById('sessionId').value.trim();
+  document.getElementById('joinBtn').onclick = async () => {
+    sessionId = document.getElementById('sessionIdInput').value.trim();
     if (!sessionId || sessionId.length !== 4 || isNaN(sessionId)) {
-      alert('Введите корректный ID сессии (например, 0001)');
+      alert('Введите корректный ID сессии (например 0001)');
       return;
     }
     role = 'participant';
-    startLocalStream().then(() => {
-      joinSession();
-    });
-  };
-
-  document.getElementById('adminLoginBtn').onclick = () => {
-    const password = document.getElementById('adminPassword').value.trim();
-    const correctPassword = 'admin123'; // пароль администратора
-    if (password === correctPassword) {
-      // Входим как админ
-      sessionId = document.getElementById('sessionId').value.trim();
-      if (!sessionId || sessionId.length !== 4 || isNaN(sessionId)) {
-        alert('Введите корректный ID сессии (например, 0001)');
-        return;
-      }
-      role = 'admin';
-      startAdminView();
-    } else {
-      alert('Неверный пароль');
-    }
+    await startLocalStream();
+    await joinSession();
   };
 
   async function startLocalStream() {
@@ -143,131 +107,136 @@
   }
 
   // =======================
-  // Создание сессии
+  // Создание новой сессии (для хоста)
   async function createSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
     await sessionRef.set({});
 
-    // Обработчик новых участников
+    // Обработка новых участников
     db.ref('sessions/' + sessionId + '/participants').on('child_added', snapshot => {
       const participantId = snapshot.key;
       if (participantId !== 'admin') {
-        initPeerConnection(participantId, true);
+        connectToParticipant(participantId);
       }
     });
   }
 
   // =======================
-  // Присоединение к сессии
+  // Присоединение к существующей сессии (для участников)
   async function joinSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
     const participantId = 'participant_' + getNextSessionId();
     await sessionRef.child('participants').child(participantId).set({});
 
-    initPeerConnection('host', false);
-  }
-
-  // =======================
-  // Войти как админ
-  async function startAdminView() {
-    const adminId = 'admin_' + getNextSessionId();
-    const sessionRef = db.ref('sessions/' + sessionId);
-    await sessionRef.child('participants').child('admin').set({});
-
-    await initPeerConnection('host', false, true);
-  }
-
-  // =======================
-  // Инициализация PeerConnection
-  async function initPeerConnection(remoteId, isOfferer, isAdmin=false) {
-    const pc = new RTCPeerConnection(configuration);
-    peerConnections[remoteId] = pc;
-
-    // Добавляем локальный поток
-    if (localStream) {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    }
-
-    // ICE кандидаты
-    pc.onicecandidate = event => {
-      if (event.candidate) {
-        const candidateRef = db.ref(`sessions/${sessionId}/candidates/${remoteId}`);
-        candidateRef.push(event.candidate.toJSON());
+    // Обработка предложений
+    db.ref(`sessions/${sessionId}/offers`).on('child_added', async snapshot => {
+      const fromId = snapshot.key;
+      const offer = snapshot.val();
+      if (fromId !== participantId) {
+        await handleOffer(fromId, offer);
       }
-    };
+    });
 
-    // Обработка потоков
-    pc.ontrack = event => {
-      addRemoteStream(event.streams[0], remoteId);
-    };
-
-    // Создаем или ждем offer/answer
-    if (role === 'host') {
-      if (isOfferer) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await db.ref(`sessions/${sessionId}/offer`).set(pc.localDescription.toJSON());
-      } else {
-        // участник ждет offer
-        db.ref(`sessions/${sessionId}/offer`).on('value', async snapshot => {
-          const offer = snapshot.val();
-          if (offer && !pc.currentRemoteDescription) {
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            await db.ref(`sessions/${sessionId}/answer`).set(pc.localDescription.toJSON());
-          }
-        });
+    // Обработка ответов
+    db.ref(`sessions/${sessionId}/answers`).on('child_added', async snapshot => {
+      const fromId = snapshot.key;
+      const answer = snapshot.val();
+      if (peers[fromId]) {
+        await peers[fromId].setRemoteDescription(new RTCSessionDescription(answer));
       }
-    } else {
-      // участники или админ
-      db.ref(`sessions/${sessionId}/offer`).on('value', async snapshot => {
-        const offer = snapshot.val();
-        if (offer && !pc.currentRemoteDescription) {
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await db.ref(`sessions/${sessionId}/answer`).set(pc.localDescription.toJSON());
-        }
-      });
-    }
+    });
 
     // Обработка ICE кандидатов
-    const candidatesRef = db.ref(`sessions/${sessionId}/candidates/${remoteId}`);
-    candidatesRef.on('child_added', async snapshot => {
+    db.ref(`sessions/${sessionId}/candidates`).on('child_added', snapshot => {
+      const fromId = snapshot.key;
       const candidate = new RTCIceCandidate(snapshot.val());
-      await pc.addIceCandidate(candidate);
+      if (peers[fromId]) {
+        peers[fromId].addIceCandidate(candidate);
+      }
+    });
+
+    // Создаем соединения с уже существующими участниками
+    // или ждем новых
+    // Тут можно добавить логику поиска уже подключенных участников
+  }
+
+  // =======================
+  // Подключение к участнику (для хоста)
+  async function connectToParticipant(participantId) {
+    const pc = new RTCPeerConnection(configuration);
+    peers[participantId] = pc;
+
+    // Добавляем локальные дорожки
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    // ICE кандидаты
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        firebase.database().ref(`sessions/${sessionId}/candidates/${participantId}`).push(e.candidate.toJSON());
+      }
+    };
+
+    // Обработка входящих потоков
+    pc.ontrack = e => {
+      addRemoteStream(e.streams[0], participantId);
+    };
+
+    // Создаём offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await firebase.database().ref(`sessions/${sessionId}/offers/${participantId}`).set(pc.localDescription.toJSON());
+
+    // Ждем answer
+    const answerRef = firebase.database().ref(`sessions/${sessionId}/answers/${participantId}`);
+    answerRef.on('value', async snapshot => {
+      const answer = snapshot.val();
+      if (answer && !pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
     });
   }
 
   // =======================
-  // Добавление видео участников
-  function addRemoteStream(stream, remoteId) {
-    if (role === 'admin') {
-      // В админке показываем все потоки
-      if (!remoteVideoElements[remoteId]) {
-        const video = document.createElement('video');
-        video.id = 'remote_' + remoteId;
-        video.autoplay = true;
-        video.playsinline = true;
-        remoteVideosContainer.appendChild(video);
-        remoteVideoElements[remoteId] = video;
+  // Обработка входящего предложения
+  async function handleOffer(fromId, offer) {
+    const pc = new RTCPeerConnection(configuration);
+    peers[fromId] = pc;
+
+    // Добавляем локальные дорожки
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    // ICE
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        firebase.database().ref(`sessions/${sessionId}/candidates/${fromId}`).push(e.candidate.toJSON());
       }
-      remoteVideoElements[remoteId].srcObject = stream;
-    }
+    };
+
+    // Обработка входящих потоков
+    pc.ontrack = e => {
+      addRemoteStream(e.streams[0], fromId);
+    };
+
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await firebase.database().ref(`sessions/${sessionId}/answers/${fromId}`).set(pc.localDescription.toJSON());
   }
 
   // =======================
-  // Войти как админ — создается отдельный поток
-  async function startAdminView() {
-    // Админ подключается как участник, чтобы видеть все потоки
-    const adminId = 'admin_' + getNextSessionId();
-    const sessionRef = db.ref('sessions/' + sessionId);
-    await sessionRef.child('participants').child('admin').set({});
-
-    await initPeerConnection('host', false, true);
+  // Добавление видео потока
+  function addRemoteStream(stream, id) {
+    let video = document.getElementById('remote_' + id);
+    if (!video) {
+      video = document.createElement('video');
+      video.id = 'remote_' + id;
+      video.autoplay = true;
+      video.playsinline = true;
+      remoteVideosContainer.appendChild(video);
+    }
+    video.srcObject = stream;
   }
-
 </script>
+
 </body>
 </html>

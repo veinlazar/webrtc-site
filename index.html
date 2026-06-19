@@ -847,7 +847,7 @@
                 statusDiv.textContent = '🔄 Авто: Делаю фото...';
                 statusDiv.className = 'status auto';
                 
-                flashOverlay.style.opacity = '1';
+                flashOverlay.style.opacity = '0';
                 setTimeout(() => { flashOverlay.style.opacity = '0'; }, 200);
                 
                 const photoFile = await capturePhoto();

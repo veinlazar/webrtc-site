@@ -70,16 +70,13 @@
   let role = ''; // 'host' или 'participant'
   let sessionId = '';
 
-  // Генератор уникальных ID сеансов
-  let sessionCounter = 1;
-  function getNextSessionId() {
-    const idStr = sessionCounter.toString().padStart(4, '0');
-    sessionCounter++;
-    return idStr;
+  // Генерируем уникальный ID сессии
+  function generateSessionId() {
+    return Math.floor(Math.random() * 10000).toString().padStart(4, '0');
   }
 
   document.getElementById('createBtn').onclick = async () => {
-    sessionId = getNextSessionId();
+    sessionId = generateSessionId(); // Создаем уникальный ID
     document.getElementById('status').innerText = 'Создана сессия: ' + sessionId;
     role = 'host';
     await startLocalStream();
@@ -126,7 +123,7 @@
   // Присоединяемся к сессии (для участников)
   async function joinSession() {
     const sessionRef = db.ref('sessions/' + sessionId);
-    const participantId = 'participant_' + getNextSessionId();
+    const participantId = 'participant_' + generateSessionId(); // уникальный ID участника
     await sessionRef.child('participants').child(participantId).set({});
 
     // Обработка входящих предложений
@@ -155,13 +152,10 @@
         peers[fromId].addIceCandidate(new RTCIceCandidate(candidate));
       }
     });
-
-    // Создаем соединение со всеми участниками, которых уже есть
-    // Но в основном мы ждем новых участников через on('child_added')
   }
 
   // =======================
-  // Создаем соединение с новым участником (для хоста)
+  // Создаем соединение с участником (для хоста)
   async function connectToParticipant(participantId) {
     const pc = new RTCPeerConnection(configuration);
     peers[participantId] = pc;

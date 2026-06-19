@@ -90,7 +90,7 @@
       return;
     }
     role = 'participant';
-    await startLocalStream();
+    await startLocalStream(); // Включаем камеру и показываем локальное видео
     await joinSession();
   };
 
@@ -152,6 +152,9 @@
         peers[fromId].addIceCandidate(new RTCIceCandidate(candidate));
       }
     });
+
+    // Для участников, сразу показываем свою камеру после подключения
+    // (уже вызвано в startLocalStream при нажатии)
   }
 
   // =======================
